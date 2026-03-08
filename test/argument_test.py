@@ -37,7 +37,7 @@ def make_checkerboard(width, height, tile):
 
 def main():
     p = argparse.ArgumentParser(description="生成并全屏显示棋盘格（6/7/8px）")
-    p.add_argument("--outdir", default=".", help="保存目录（相对于当前工作目录）")
+    p.add_argument("--outdir", default="./test/argument_test_attachments", help="保存目录（相对于当前工作目录）")
     p.add_argument("--duration", type=int, default=0, help="自动切换毫秒（0 为按键切换）")
     args = p.parse_args()
 
