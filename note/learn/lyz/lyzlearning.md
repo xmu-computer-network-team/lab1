@@ -2,3 +2,9 @@
 
 # 错误处理
 - crc可以类似为一种类似哈希校验的方式，可以放在色块的最后32个进行校验
+
+# python虚拟环境
+python3 -m venv (虚拟环境名字)
+source 路径里的activate激活
+- python3 --help
+- python3 -m venv --help 都能查帮助

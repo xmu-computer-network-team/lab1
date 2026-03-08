@@ -11,6 +11,10 @@
 import argparse
 import os
 import math
+import sys
+import subprocess
+import re
+import shutil
 import tkinter as tk
 
 import cv2
@@ -18,6 +22,31 @@ import numpy as np
 
 
 def screen_size():
+    # Try platform-specific queries to get *real* pixel dimensions.
+    # Windows: request DPI-awareness and use GetSystemMetrics
+    if sys.platform.startswith("win"):
+        try:
+            import ctypes
+
+            ctypes.windll.user32.SetProcessDPIAware()
+            w = int(ctypes.windll.user32.GetSystemMetrics(0))
+            h = int(ctypes.windll.user32.GetSystemMetrics(1))
+            return w, h
+        except Exception:
+            pass
+
+    # Linux / X11: prefer xrandr if available
+    # try:
+    #     if shutil.which("xrandr"):
+    #         out = subprocess.check_output(["xrandr", "--current"], text=True, stderr=subprocess.DEVNULL)
+    #         # find first connected output and its current resolution e.g. '1920x1080'
+    #         m = re.search(r" connected(?: primary)? .*?(\d+)x(\d+)", out)
+    #         if m:
+    #             return int(m.group(1)), int(m.group(2))
+    # except Exception:
+    #     pass
+
+    # Fallback: use Tk reported (logical) screen size
     root = tk.Tk()
     root.withdraw()
     w = root.winfo_screenwidth()
