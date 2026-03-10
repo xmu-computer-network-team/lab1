@@ -11,10 +11,16 @@ $$d = \frac{27 * 25.4}{\sqrt{2560^2 + 1440^2}}  \approx \mathbf{0.2335mm}$$
 - 总共2560个像素点，软件只分配了1600个，所以每个像素点占据<br>
 0.2335 * 2560/1600 = 0.3736mm
 
-
+### git
+- git help revisions 查操作对象名称
+- HEAD~1 表上次提交的上次
 
 ### python虚拟环境
 python3 -m venv (虚拟环境名字)
 source 路径里的activate激活
 - python3 --help
 - python3 -m venv --help 都能查帮助
+
+### python回顾
+- -> 用来修饰返回值的类型，不强制检查
+- def __init__(self):  双下划线

@@ -1,6 +1,9 @@
 # 帧参数
 #sdsa
-BLOCK_SIZE: int = 8#sd:w
+BLOCK_SIZE = 8 #每个块占的逻辑像素
+FRAME_WIDTH = 1920 #视频宽度
+FRAME_HEIGHT = 1080
+FPS = 24 #帧率
 
 
 
