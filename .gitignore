@@ -1,2 +1,4 @@
 .venv/
 test/argument_test_attachments/
+test/template_test_attachments/
+**/__pycache__/
