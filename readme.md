@@ -24,3 +24,7 @@ test/ ：放测试代码
 - 让自己的ai开始各个部分工作前，阅读一下已有的ai-attachments，减少幻觉率
 
 ## 环境规范
+根目录下
+```python
+python -m pip install -r requirements.txt
+```

@@ -16,10 +16,12 @@ $$d = \frac{27 * 25.4}{\sqrt{2560^2 + 1440^2}}  \approx \mathbf{0.2335mm}$$
 - HEAD~1 表上次提交的上次
 
 ### python虚拟环境
-python3 -m venv (虚拟环境名字)
-source 路径里的activate激活
-- python3 --help
-- python3 -m venv --help 都能查帮助
+- 创建环境:python3 -m venv (虚拟环境名字)
+- 激活环境：source 路径里的activate激活
+- 命令查询
+    - python3 --help
+    - python3 -m venv --help 都能查帮助
+- 环境导出:python -m pip freeze > requirements.txt
 
 ### python回顾
 - -> 用来修饰返回值的类型，不强制检查
