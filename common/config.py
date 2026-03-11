@@ -1,0 +1,17 @@
+# 帧参数
+#sdsa
+BLOCK_SIZE = 8 #每个块占的逻辑像素
+FRAME_WIDTH = 1920 #视频宽度
+FRAME_HEIGHT = 1080
+FPS = 24 #帧率
+
+
+
+#定位图案
+FINDER_SIZE = 7
+ALIGN_SIZE = 5
+SEPARATOR_WIDTH = 1
+
+#网格参数
+GRID_COLS = FRAME_WIDTH // BLOCK_SIZE #总共1920像素除8个像素一快
+GRID_ROWS = FRAME_HEIGHT // BLOCK_SIZE
