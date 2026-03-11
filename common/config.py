@@ -11,3 +11,5 @@ FPS = 24 #帧率
 FINDER_SIZE = 7
 ALIGN_SIZE = 5
 SEPARATOR_WIDTH = 1
+
+#网格参数

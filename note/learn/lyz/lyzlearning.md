@@ -24,3 +24,8 @@ source 路径里的activate激活
 ### python回顾
 - -> 用来修饰返回值的类型，不强制检查
 - def __init__(self):  双下划线
+- zeros: Final[_ConstructorEmpty] = ...
+    - 类型存根文件语法
+    - Final表不可重新赋值
+    - 中括号内是类型
+    - ...表实现在别处

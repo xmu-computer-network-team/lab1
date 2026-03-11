@@ -1,9 +1,19 @@
 import common.pattern
+import numpy as np
 from common.config import *
 
 class FrameBuilder:
     def __init__(self):
         pass 
+
+    def build_template(self) -> np.ndarray:
+        frame = np.zeros((FRAME_HEIGHT,FRAME_WIDTH))
+
+        #左三侧pattern
+        self.draw_pattern(frame,0,0,common.pattern.generate_finder_pattern,7)
+            
+
+
 
     def draw_pattern(self, frame, row, col, pattern, SIZE):
         #外黑内白中间3x3黑
