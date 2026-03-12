@@ -1,6 +1,7 @@
 import common.pattern
 import numpy as np
 from common.config import *
+from common.crc import *
 
 class FrameBuilder:
     def __init__(self):
@@ -65,4 +66,53 @@ class FrameBuilder:
             y = row * BLOCK_SIZE
             color = 255 if bit == 1 else 0
             frame[y:y+BLOCK_SIZE,x : x+BLOCK_SIZE] = color 
-                
+
+    def write_bits_to_header_area(self, frame, bits):
+        start_col = FINDER_SIZE
+        end_col = GRID_COLS - FINDER_SIZE  # 不覆盖右侧 Finder
+        row = 0
+
+        for i, bit in enumerate(bits):
+            col = start_col + i
+            if col >= end_col:
+                break
+            x = col * BLOCK_SIZE
+            y = row * BLOCK_SIZE
+            color = 255 if bit == 1 else 0
+            frame[y:y+BLOCK_SIZE, x:x+BLOCK_SIZE] = color
+
+    def encoder_header(self, frame_id, segment_count):
+        bits = []
+        bits.append(frame_id % 2)
+
+        bits.extend(self.int_to_bits(frame_id,12))
+        bits.extend(self.int_to_bits(segment_count,16))
+        crc = crc8(bits)
+        bits.extend(self.int_to_bits(crc,8))
+        return bits            
+
+    def int_to_bits(self, value, length):
+        """整数转固定长度 bit 列表 (MSB first)。
+
+        返回长度为 `length` 的 0/1 列表；超出位会被截断。
+        """
+        bits = []
+        for i in range(length):
+            bits.append((value >> (length - 1 - i)) & 1)
+        return bits
+
+    def build_frame(self, frame_id: list,segments: list) -> np.ndarray:
+        """
+        segment 字节列表
+        """
+        frame = self.template.copy()
+
+        header_bits = self.encoder_header(frame_id,len(segments))
+        self.write_bits_to_header_area(frame,header_bits)
+
+        all_bits = []
+        for seg in segments:
+            all_bits.extend(seg)
+        self.write_bits_to_data_area(frame,all_bits)
+
+        return frame

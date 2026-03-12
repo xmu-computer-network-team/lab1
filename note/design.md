@@ -48,3 +48,8 @@ if (row - data_row_start) % 2 == 0:
 奇数列，从右往左
 col_range = range(GRID_COLS - 1, -1, -1) 左闭右开不达-1，步长为-1
 ```
+## int_to_bits
+```python
+value >> length - 1 - i 把正在读取的那一位移到最低位
+&1 把最低位取出来
+```
