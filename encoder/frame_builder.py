@@ -5,6 +5,7 @@ from common.config import *
 class FrameBuilder:
     def __init__(self):
         self.template = self.build_template()
+        self.scan_order = self.build_scan_order()
 
     def build_template(self) -> np.ndarray:
         frame = np.zeros((FRAME_HEIGHT,FRAME_WIDTH))
@@ -30,7 +31,7 @@ class FrameBuilder:
             for c in range(SIZE):
                 x = (col + c) * BLOCK_SIZE
                 y = (row + r) * BLOCK_SIZE
-                color = 0 if pattern[r][c] == 1 else 255
+                color = 255 if pattern[r][c] == 1 else 0
                 frame[y:y+BLOCK_SIZE,x:x+BLOCK_SIZE] = color
 
     def draw_separators(self, frame):
@@ -54,3 +55,14 @@ class FrameBuilder:
             for col in col_range:
                 coords.append((row,col))
         return coords
+
+    def write_bits_to_data_area(self, frame, bits)
+        for i, bit in enumerate(bits):
+            if i >= len(self.scan_order):
+                break ## 文件分段如果正确实现，不会出现bit比容量多
+            row, col = self.scan_order[i]
+            x = col * BLOCK_SIZE
+            y = row * BLOCK_SIZE
+            color = 255 if bit == 1 else 0
+            frame[y:y+BLOCK_SIZE,x : x+BLOCK_SIZE] = color 
+                
