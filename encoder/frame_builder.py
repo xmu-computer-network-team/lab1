@@ -40,3 +40,17 @@ class FrameBuilder:
             y2 = ((GRID_ROWS - 1) - FINDER_SIZE) * BLOCK_SIZE
             frame[y1:y1+BLOCK_SIZE,x:x+BLOCK_SIZE] = 255 
             frame[y2:y2+BLOCK_SIZE,x:x+BLOCK_SIZE] = 255 
+    
+    def build_scan_order(self) -> list:
+        coords = []
+        data_row_start = FINDER_SIZE + SEPARATOR_WIDTH
+        data_row_end = GRID_ROWS - FINDER_SIZE - SEPARATOR_WIDTH
+
+        for row in range(data_row_start, data_row_end):
+            if (row - data_row_end) % 2 == 0:
+                col_range = range(0,GRID_COLS)
+            else:
+                col_range = range(GRID_COLS - 1, -1, -1)
+            for col in col_range:
+                coords.append((row,col))
+        return coords
