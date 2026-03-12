@@ -1,0 +1,226 @@
+encoder/video_writer.py 模块说明
+一、模块核心功能
+本模块仅负责将一系列 numpy 灰度帧图像写入 MJPG 编码的视频文件（不涉及编码逻辑），核心约束如下：
+视频编码固定为 MJPG（避免 H.264/H.265 帧间压缩破坏二维码像素）；
+灰度单通道帧需转为 BGR 三通道（OpenCV VideoWriter 不支持单通道）；
+视频分辨率（FRAME_WIDTH/FRAME_HEIGHT）、帧率（FPS）从 common/config.py 读取，不硬编码；
+提供两种写入方式：批量写入（少帧）、逐帧写入（多帧，节省内存）。
+二、完整代码实现
+可直接复制到 encoder/video_writer.py 文件中：
+python
+运行
+import cv2
+import numpy as np
+from common.config import FRAME_WIDTH, FRAME_HEIGHT, FPS
+
+# -------------------------- 批量写入接口（少量帧场景） --------------------------
+def frames_to_video(frames: list, output_path: str) -> None:
+    """将帧列表一次性写入视频文件
+    
+    Args:
+        frames: 灰度帧列表，每个元素为 np.ndarray，shape=(FRAME_HEIGHT, FRAME_WIDTH)，dtype=uint8
+        output_path: 输出视频路径（如 "output.avi"）
+    
+    Raises:
+        ValueError: 帧列表为空 / 帧格式不符合要求
+        RuntimeError: VideoWriter 打开失败
+    """
+    # 校验帧列表非空
+    if not frames:
+        raise ValueError("Frames list cannot be empty")
+    
+    # 校验每帧格式
+    for idx, frame in enumerate(frames):
+        if frame.shape != (FRAME_HEIGHT, FRAME_WIDTH) or frame.dtype != np.uint8:
+            raise ValueError(
+                f"第 {idx} 帧格式错误！要求 shape=({FRAME_HEIGHT}, {FRAME_WIDTH})、dtype=uint8，"
+                f"实际 shape={frame.shape}、dtype={frame.dtype}"
+            )
+    
+    # 创建 MJPG 编码的 VideoWriter
+    fourcc = cv2.VideoWriter_fourcc(*'MJPG')
+    writer = cv2.VideoWriter(
+        output_path,
+        fourcc,
+        FPS,
+        (FRAME_WIDTH, FRAME_HEIGHT)
+    )
+    
+    # 检查 VideoWriter 是否打开成功
+    if not writer.isOpened():
+        raise RuntimeError(
+            f"VideoWriter 打开失败！可能原因：\n"
+            f"1. 输出路径无写入权限：{output_path}\n"
+            f"2. OpenCV 未安装 MJPG 编码支持 \n"
+            f"3. 帧尺寸和配置不匹配（当前配置：宽 {FRAME_WIDTH}，高 {FRAME_HEIGHT}）"
+        )
+    
+    try:
+        # 遍历帧，灰度转 BGR 后写入
+        for frame in frames:
+            bgr_frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+            writer.write(bgr_frame)
+    finally:
+        # 确保资源释放
+        writer.release()
+
+# -------------------------- 逐帧写入接口（大量帧场景） --------------------------
+class VideoWriterContext:
+    """支持逐帧写入的视频写入器，基于上下文管理器自动释放资源
+    
+    用法：
+        with VideoWriterContext("output.avi") as vw:
+            for frame in frame_generator():
+                vw.write_frame(frame)
+        print(vw.frame_count) # 查看写入帧数
+    """
+    def __init__(self, output_path: str):
+        self.output_path = output_path
+        self._writer = None  # 延迟初始化（在__enter__中创建）
+        self.frame_count = 0 # 已写入帧数统计
+
+    def __enter__(self):
+        """上下文管理器进入：初始化 VideoWriter"""
+        fourcc = cv2.VideoWriter_fourcc(*'MJPG')
+        self._writer = cv2.VideoWriter(
+            self.output_path,
+            fourcc,
+            FPS,
+            (FRAME_WIDTH, FRAME_HEIGHT)
+        )
+        
+        if not self._writer.isOpened():
+            raise RuntimeError(
+                f"VideoWriter 打开失败！可能原因：\n"
+                f"1. 输出路径无写入权限：{self.output_path}\n"
+                f"2. OpenCV 未安装 MJPG 编码支持 \n"
+                f"3. 帧尺寸和配置不匹配（当前配置：宽 {FRAME_WIDTH}，高 {FRAME_HEIGHT}）"
+            )
+        return self
+
+    def write_frame(self, frame: np.ndarray) -> None:
+        """写入单帧（需在 with 块中调用）
+        
+        Args:
+            frame: 灰度帧，shape=(FRAME_HEIGHT, FRAME_WIDTH)，dtype=uint8
+        
+        Raises:
+            RuntimeError: 未通过 with 初始化写入器
+            ValueError: 帧格式不符合要求
+        """
+        # 校验写入器状态
+        if self._writer is None or not self._writer.isOpened():
+            raise RuntimeError("请先通过 with 语句初始化 VideoWriterContext！")
+        
+        # 校验帧格式
+        if frame.shape != (FRAME_HEIGHT, FRAME_WIDTH) or frame.dtype != np.uint8:
+            raise ValueError(
+                f"帧格式错误！要求 shape=({FRAME_HEIGHT}, {FRAME_WIDTH})、dtype=uint8，"
+                f"实际 shape={frame.shape}、dtype={frame.dtype}"
+            )
+        
+        # 灰度转 BGR 并写入
+        bgr_frame = cv2.cvtColor(frame, cv2.COLOR_GRAY2BGR)
+        self._writer.write(bgr_frame)
+        self.frame_count += 1
+
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        """上下文管理器退出：释放资源"""
+        if self._writer is not None:
+            self._writer.release()
+            self._writer = None  # 清空引用，避免重复释放
+
+# -------------------------- 测试代码（可选，验证功能） --------------------------
+if __name__ == "__main__":
+    # 生成测试灰度帧（黑白交替，共 10 帧）
+    test_frames = []
+    for i in range(10):
+        if i % 2 == 0:
+            frame = np.zeros((FRAME_HEIGHT, FRAME_WIDTH), dtype=np.uint8)  # 纯黑帧
+        else:
+            frame = np.full((FRAME_HEIGHT, FRAME_WIDTH), 255, dtype=np.uint8)  # 纯白帧
+        test_frames.append(frame)
+    
+    # 测试批量写入
+    try:
+        frames_to_video(test_frames, "test_single.avi")
+        print("✅ 测试 1 成功：frames_to_video 写入完成，生成 test_single.avi")
+    except Exception as e:
+        print(f"❌ 测试 1 失败：{e}")
+    
+    # 测试逐帧写入
+    try:
+        with VideoWriterContext("test_batch.avi") as vw:
+            for frame in test_frames:
+                vw.write_frame(frame)
+        print(f"✅ 测试 2 成功：VideoWriterContext 写入完成，生成 test_batch.avi（共写入 {vw.frame_count} 帧）")
+    except Exception as e:
+        print(f"❌ 测试 2 失败：{e}")
+三、依赖安装
+执行以下命令安装所需依赖：
+bash
+运行
+pip install opencv-python numpy
+四、配置文件（common/config.py）
+需先创建 common 文件夹，再新建 config.py 文件并写入以下内容：
+python
+运行
+# 视频基础配置参数
+FRAME_WIDTH = 1920   # 视频宽度
+FRAME_HEIGHT = 1080  # 视频高度
+FPS = 30             # 视频帧率
+五、使用示例
+示例 1：批量写入（少量帧）
+python
+运行
+import numpy as np
+from encoder.video_writer import frames_to_video
+from common.config import FRAME_WIDTH, FRAME_HEIGHT
+
+# 生成 3 帧测试灰度帧
+black = np.zeros((FRAME_HEIGHT, FRAME_WIDTH), dtype=np.uint8)
+white = np.full((FRAME_HEIGHT, FRAME_WIDTH), 255, dtype=np.uint8)
+frames = [black, white, black]
+
+# 写入视频
+frames_to_video(frames, "test_batch.avi")
+示例 2：逐帧写入（大量帧 / 流场景）
+python
+运行
+from encoder.video_writer import VideoWriterContext
+import numpy as np
+from common.config import FRAME_WIDTH, FRAME_HEIGHT
+
+# 逐帧写入（假设有 frame_generator 生成帧）
+with VideoWriterContext("test_stream.avi") as vw:
+    for i in range(100):
+        # 生成随机灰度帧
+        frame = np.random.randint(0, 256, (FRAME_HEIGHT, FRAME_WIDTH), dtype=np.uint8)
+        vw.write_frame(frame)
+
+print(f"逐帧写入完成，共写入 {vw.frame_count} 帧")
+六、常见问题排查
+表格
+问题现象	可能原因	解决办法
+VideoWriter 打开失败	1. 输出路径无写入权限
+2. OpenCV 缺少 MJPG 编码
+3. 帧尺寸与配置不匹配	1. 更换可写入路径（如桌面）
+2. 重新安装 OpenCV：pip install --upgrade opencv-python
+3. 核对帧尺寸与 config.py 一致
+ModuleNotFoundError: No module named 'encoder'	Python 工作目录不在项目根目录，无法找到 encoder 模块	在测试脚本开头添加：
+python<br>import sys<br>import os<br>sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))<br>
+视频无法播放	1. 帧数过少（时长太短）
+2. 播放器不支持 MJPG 编码	1. 增加帧数（如生成 30 帧以上）
+2. 使用 VLC 播放器打开
+帧格式错误	帧的 shape 不是 (FRAME_HEIGHT, FRAME_WIDTH) 或 dtype 不是 uint8	生成帧时严格匹配尺寸和数据类型（参考测试代码）
+七、核心总结
+核心目标：将 numpy 灰度单通道帧转为 MJPG 编码的 BGR 三通道视频文件；
+两种模式：批量写入（少帧）、逐帧写入（多帧，上下文管理器自动释放资源）；
+关键约束：必须用 MJPG 编码、灰度转 BGR、参数从配置文件读取。
+格式优化说明
+用 Markdown 标题层级（#/##/###）区分模块，结构更清晰；
+代码块添加 python/bash 语法高亮，代码可读性大幅提升；
+常见问题用 表格 展示，对比更直观；
+修正了原文本中缺失的魔法方法下划线（如 __init__/__enter__/__exit__/__name__），避免运行报错；
+关键约束 / 注意点用 粗体 标注，重点突出；
+代码注释与说明文字分行排版，避免拥挤。
