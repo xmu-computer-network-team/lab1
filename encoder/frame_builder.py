@@ -56,7 +56,7 @@ class FrameBuilder:
                 coords.append((row,col))
         return coords
 
-    def write_bits_to_data_area(self, frame, bits)
+    def write_bits_to_data_area(self, frame, bits):
         for i, bit in enumerate(bits):
             if i >= len(self.scan_order):
                 break ## 文件分段如果正确实现，不会出现bit比容量多
