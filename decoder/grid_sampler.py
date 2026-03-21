@@ -3,13 +3,10 @@ import numpy as np
 from common.config import *
 
 class GridSampler:
-    """从矫正后的图像中提取 bit 矩阵和置信度"""
+   
 
     def sample(self, corrected_gray: np.ndarray):
-        """
-        输入: 矫正后的灰度图
-        输出: (bits, confidences) 两个二维数组，shape=(GRID_ROWS, GRID_COLS)
-        """
+       
         bits = np.zeros((GRID_ROWS, GRID_COLS), dtype=np.uint8)
         confidences = np.zeros((GRID_ROWS, GRID_COLS), dtype=np.float32)
 
