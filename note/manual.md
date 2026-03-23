@@ -29,3 +29,13 @@ ModuleNotFoundError: No module named 'encoder'
 ```python
 sys.path.insert(0,os.path.join(os.path.dirname(__file__),".."))
 ```
+### ber率始终在接近 50%
+表现：定位模块写完后，进行端到端测试误码率始终在50%左右
+
+尝试：给定位模块加了各种参数微调<br>
+结果：无用
+
+尝试：添加定位块<br>
+结果：无用
+
+最后又看了一遍frame_builder，发现原来是一个宏写错了，导致整个扫描顺序反了

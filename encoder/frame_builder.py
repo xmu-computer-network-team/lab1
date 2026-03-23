@@ -49,7 +49,7 @@ class FrameBuilder:
         data_row_end = GRID_ROWS - FINDER_SIZE - SEPARATOR_WIDTH
 
         for row in range(data_row_start, data_row_end):
-            if (row - data_row_end) % 2 == 0:
+            if (row - data_row_start) % 2 == 0:
                 col_range = range(0,GRID_COLS)
             else:
                 col_range = range(GRID_COLS - 1, -1, -1)
