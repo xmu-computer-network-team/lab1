@@ -1,0 +1,58 @@
+### 渲染问题
+表现:tkinkter没有按照显示设备的大小，去相对地绘制图片<br>
+环境:笔记本电脑连接显示器,python运行环境为wsl<br>
+原因：tkinter默认dpi不感知，也就是它默认没法处理高分辨率显示器的缩放<br>
+```python
+w = root.winfo_screenwidth()
+h = root.winfo_screenheight()
+```
+解决办法:调用系统接口
+```python
+w = int(ctypes.windll.user32.GetSystemMetrics(0))
+h = int(ctypes.windll.user32.GetSystemMetrics(1))
+```
+### python模块导入问题
+表现：
+```bash
+(.venv) ➜  lab1 git:(main) ✗ python test/template_test.py
+Traceback (most recent call last):
+  File "/home/jade/projects/school-network-lab1/lab1/test/template_test.py", line 3, in <module>
+    from encoder.frame_builder import FrameBuilder
+ModuleNotFoundError: No module named 'encoder'
+```
+原因：运行某个文件时，就会以那个文件在的目录为工作目录
+解决方法：<br>
+在测试脚本开头把它的父目录加入到python的系统路径
+- sys.path：把后面的路径参数按前面的索引插入
+- os.path.dirname(__file__)返回去掉文件名的路径
+- 再补上..刚好是父目录
+```python
+sys.path.insert(0,os.path.join(os.path.dirname(__file__),".."))
+```
+### ber率始终在接近 50%
+表现：定位模块写完后，进行端到端测试误码率始终在50%左右
+
+尝试：给定位模块加了各种参数微调<br>
+结果：无用
+
+尝试：添加定位块<br>
+结果：无用
+
+最后又看了一遍frame_builder，发现原来是一个宏写错了，导致整个扫描顺序反了
+
+### 定位模块识别率低
+表现：帧头总是识别不上，图像识别鲁棒率很低
+
+分析：感觉是16：9长宽比识别难度太高了，改成正方形<br>
+结果：无效
+
+尝试：用标准二维码识别库进行测试，排除掉定位设计的影响<br>
+结果：还是有一半的图片识别不出来<br>
+分析：怀疑是拍摄质量的问题
+
+尝试：进一步提高拍摄质量<br>
+结果：还是不行<br>
+分析：感觉不太可能，都是原生方案了怎么效果还是这么查，查资料发现原来opencv是图像工具库成分多一点，不是专精二维码识别
+
+尝试：搜寻开源库，发现pyzbar<br>
+结果：测试成功,更改方案<br>
