@@ -17,7 +17,7 @@ class FrameBuilder:
         self.draw_pattern(frame,GRID_ROWS - FINDER_SIZE, 0, common.pattern.generate_finder_pattern(),FINDER_SIZE) #左下
 
         # 右下
-        self.draw_pattern(frame,GRID_ROWS - ALIGN_SIZE,GRID_COLS - ALIGN_SIZE,common.pattern.generate_align_pattern(),ALIGN_SIZE)
+        self.draw_pattern(frame,GRID_ROWS - FINDER_SIZE,GRID_COLS - FINDER_SIZE,common.pattern.generate_finder_pattern(),FINDER_SIZE)
 
         # 画分隔带
         self.draw_separators(frame)
