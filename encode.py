@@ -10,9 +10,10 @@ import os
 
 sys.path.insert(0, os.path.dirname(__file__))
 
+import numpy as np
 from encoder.frame_builder import build_qr_frames
 from encoder.video_writer import VideoWriterContext
-from common.config import FPS
+from common.config import FPS, FRAME_WIDTH, FRAME_HEIGHT
 
 
 def encode_file(input_path: str, output_path: str) -> None:
@@ -23,6 +24,11 @@ def encode_file(input_path: str, output_path: str) -> None:
     print(f"Generated {len(frames)} frames at {FPS} FPS")
 
     with VideoWriterContext(output_path) as vw:
+        # 写 2 秒纯白帧，避免播放器 UI 遮挡 QR
+        white = np.full((FRAME_HEIGHT, FRAME_WIDTH), 255, dtype=np.uint8)
+        for _ in range(int(2 * FPS)):
+            vw.write_frame(white)
+
         for i, frame in enumerate(frames):
             vw.write_frame(frame)
             if (i + 1) % 100 == 0:

@@ -1,9 +1,9 @@
 # 帧参数
 #sdsa
 BLOCK_SIZE = 8 #每个块占的逻辑像素
-FRAME_WIDTH = 1920 #视频宽度
-FRAME_HEIGHT = 1080
-FPS = 24 #帧率
+FRAME_WIDTH = 1750 #正方形帧
+FRAME_HEIGHT = 1750
+FPS = 30 #帧率
 
 
 
@@ -18,7 +18,7 @@ GRID_ROWS = FRAME_HEIGHT // BLOCK_SIZE
 
 #二维码
 QR_VERSION = 37
-QR_BOX_SIZE = 6
+QR_BOX_SIZE = 10
 QR_BORDER = 1
 
 # 最大原始数据字节数（V37 L级 + 整个帧 Base64 编码，实测）
