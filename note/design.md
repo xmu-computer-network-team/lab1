@@ -76,3 +76,6 @@ value >> length - 1 - i 把正在读取的那一位移到最低位
 
 ### 为什么能这么写 np.array(img.convert('L'))
 因为qr库这里返回的是一个pillow image对象，而pillow image实现了numpy接口，所以可以把一张灰度图转numpy数组对象
+
+## decpde/locator
+直接用qr库

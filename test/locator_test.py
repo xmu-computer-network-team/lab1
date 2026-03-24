@@ -18,7 +18,7 @@ import cv2
 import numpy as np
 
 from encoder.frame_builder import make_qr_frame, split_file
-from decoder.locator import decode_qr_frame, FrameLocator
+from decoder.locator import decode_qr_frame
 from decoder.frame_assembler import FrameAssembler
 
 
@@ -75,25 +75,6 @@ def test_decode_qr_frame_grayscale_input():
     print("PASS: test_decode_qr_frame_grayscale_input")
 
 
-def test_frame_locator_class_compat():
-    """测试5: FrameLocator 类向后兼容"""
-    locator = FrameLocator()
-    data = b'Locator class test'
-    frames_raw = split_file(data)
-    frame = make_qr_frame(frames_raw[0])
-    result = locator.locate_and_rectify(frame)
-    assert result is not None, "FrameLocator 应能解码"
-    print("PASS: test_frame_locator_class_compat")
-
-
-def test_frame_locator_no_qr():
-    """测试6: FrameLocator 无 QR 时返回 None"""
-    locator = FrameLocator()
-    black_img = np.zeros((1080, 1920, 3), dtype=np.uint8)
-    result = locator.locate_and_rectify(black_img)
-    assert result is None, "无 QR 应返回 None"
-    print("PASS: test_frame_locator_no_qr")
-
 
 # ==================== 主入口 ====================
 
@@ -103,8 +84,6 @@ if __name__ == "__main__":
         test_decode_qr_frame_random_data,
         test_decode_qr_frame_no_qr,
         test_decode_qr_frame_grayscale_input,
-        test_frame_locator_class_compat,
-        test_frame_locator_no_qr,
     ]
 
     passed = 0

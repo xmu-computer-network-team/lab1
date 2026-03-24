@@ -43,29 +43,3 @@ def decode_qr_frame(img: np.ndarray) -> bytes | None:
 
     return None
 
-
-class FrameLocator:
-    """
-    兼容旧接口（保留，方便后续扩展）。
-
-    locate_and_rectify 返回解码后的字节列表（每帧一个 bytes）
-    """
-
-    def locate_and_rectify(self, raw_img: np.ndarray) -> list[bytes] | None:
-        """
-        解码原始图片中的 QR 码。
-
-        Returns:
-            包含所有解码数据的列表，每元素是一帧的 bytes。
-            如果找不到 QR 码返回 None。
-        """
-        if len(raw_img.shape) == 3:
-            gray = cv2.cvtColor(raw_img, cv2.COLOR_BGR2GRAY)
-        else:
-            gray = raw_img
-
-        decoded = decode(gray, symbols=[ZBarSymbol.QRCODE])
-        if not decoded:
-            return None
-
-        return [d.data for d in decoded]
