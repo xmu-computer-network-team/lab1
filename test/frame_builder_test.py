@@ -12,9 +12,9 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
 import numpy as np
 import cv2
+from common.config import FRAME_WIDTH, FRAME_HEIGHT, MAX_RAW_BYTES
 from encoder.frame_builder import (
-    make_qr_frame, split_file, build_qr_frames,
-    MAX_RAW_BYTES, HEADER_SIZE, QR_VERSION, QR_BOX_SIZE
+    make_qr_frame, split_file, build_qr_frames
 )
 from decoder.frame_assembler import FrameAssembler, parse_frame
 from pyzbar.pyzbar import decode, ZBarSymbol
