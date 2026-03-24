@@ -1,118 +1,119 @@
-import common.pattern
+"""
+frame_builder.py — 标准 QR 码帧生成器
+
+帧格式（每帧 QR 数据区）:
+    Base64([FrameHeader 10B][RawPayload])
+
+FrameHeader (10 bytes, big-endian):
+    [1B:  frames_in_segment]
+    [1B:  total_segments]
+    [2B:  payload_length]
+    [4B:  CRC32]
+    [1B:  frame_id]
+    [1B:  segment_id]
+
+整个 (header + payload) 用 Base64 编码后再存入 QR，
+保证 QR 数据全是 ASCII 字符，避免高位字节被 UTF-8 误解码。
+"""
+import qrcode
+import base64
 import numpy as np
-from common.config import *
-from common.crc import *
-
-class FrameBuilder:
-    def __init__(self):
-        self.template = self.build_template()
-        self.scan_order = self.build_scan_order()
-
-    def build_template(self) -> np.ndarray:
-        frame = np.zeros((FRAME_HEIGHT,FRAME_WIDTH))
-
-        #左三侧pattern
-        self.draw_pattern(frame,0,0,common.pattern.generate_finder_pattern(),FINDER_SIZE)
-        self.draw_pattern(frame,0,GRID_COLS - FINDER_SIZE,common.pattern.generate_finder_pattern(),FINDER_SIZE) #右上
-        self.draw_pattern(frame,GRID_ROWS - FINDER_SIZE, 0, common.pattern.generate_finder_pattern(),FINDER_SIZE) #左下
-
-        # 右下
-        self.draw_pattern(frame,GRID_ROWS - FINDER_SIZE,GRID_COLS - FINDER_SIZE,common.pattern.generate_finder_pattern(),FINDER_SIZE)
-
-        # 画分隔带
-        self.draw_separators(frame)
-        
-        return frame
+from common.crc import crc32
 
 
+QR_VERSION = 37
+QR_BOX_SIZE = 6
+QR_BORDER = 1
+ERROR_CORRECTION = qrcode.constants.ERROR_CORRECT_L
 
-    def draw_pattern(self, frame, row, col, pattern, SIZE):
-        #外黑内白中间3x3黑
-        for r in range(SIZE):
-            for c in range(SIZE):
-                x = (col + c) * BLOCK_SIZE
-                y = (row + r) * BLOCK_SIZE
-                color = 255 if pattern[r][c] == 1 else 0
-                frame[y:y+BLOCK_SIZE,x:x+BLOCK_SIZE] = color
+FRAME_WIDTH = 1920
+FRAME_HEIGHT = 1080
 
-    def draw_separators(self, frame):
-        for c in range(GRID_COLS):
-            x = c * BLOCK_SIZE
-            y1 = (0 + FINDER_SIZE) * BLOCK_SIZE
-            y2 = ((GRID_ROWS - 1) - FINDER_SIZE) * BLOCK_SIZE
-            frame[y1:y1+BLOCK_SIZE,x:x+BLOCK_SIZE] = 255 
-            frame[y2:y2+BLOCK_SIZE,x:x+BLOCK_SIZE] = 255 
-    
-    def build_scan_order(self) -> list:
-        coords = []
-        data_row_start = FINDER_SIZE + SEPARATOR_WIDTH
-        data_row_end = GRID_ROWS - FINDER_SIZE - SEPARATOR_WIDTH
+# 最大原始数据字节数（V37 L级 + 整个帧 Base64 编码，实测）
+MAX_RAW_BYTES = 1568
+HEADER_SIZE = 10
 
-        for row in range(data_row_start, data_row_end):
-            if (row - data_row_start) % 2 == 0:
-                col_range = range(0,GRID_COLS)
-            else:
-                col_range = range(GRID_COLS - 1, -1, -1)
-            for col in col_range:
-                coords.append((row,col))
-        return coords
 
-    def write_bits_to_data_area(self, frame, bits):
-        for i, bit in enumerate(bits):
-            if i >= len(self.scan_order):
-                break ## 文件分段如果正确实现，不会出现bit比容量多
-            row, col = self.scan_order[i]
-            x = col * BLOCK_SIZE
-            y = row * BLOCK_SIZE
-            color = 255 if bit == 1 else 0
-            frame[y:y+BLOCK_SIZE,x : x+BLOCK_SIZE] = color 
+def _make_qr_inner(data: bytes) -> np.ndarray:
+    qr = qrcode.QRCode(
+        version=QR_VERSION,
+        error_correction=ERROR_CORRECTION,
+        box_size=QR_BOX_SIZE,
+        border=QR_BORDER,
+    )
+    qr.add_data(data)
+    qr.make(fit=False)
+    img = qr.make_image(fill_color="black", back_color="white")
+    return np.array(img.convert('L'))
 
-    def write_bits_to_header_area(self, frame, bits):
-        start_col = FINDER_SIZE
-        end_col = GRID_COLS - FINDER_SIZE  # 不覆盖右侧 Finder
-        row = 0
 
-        for i, bit in enumerate(bits):
-            col = start_col + i
-            if col >= end_col:
-                break
-            x = col * BLOCK_SIZE
-            y = row * BLOCK_SIZE
-            color = 255 if bit == 1 else 0
-            frame[y:y+BLOCK_SIZE, x:x+BLOCK_SIZE] = color
+def make_qr_frame(b64_encoded: bytes) -> np.ndarray:
+    """
+    将已 Base64 编码的数据转为 QR 帧图像。
 
-    def encoder_header(self, frame_id, segment_count):
-        bits = []
-        bits.append(frame_id % 2)
+    Args:
+        b64_encoded: Base64 字符串（全是 ASCII 字符）
+    """
+    qr_img = _make_qr_inner(b64_encoded)
 
-        bits.extend(self.int_to_bits(frame_id,12))
-        bits.extend(self.int_to_bits(segment_count,16))
-        crc = crc8(bits)
-        bits.extend(self.int_to_bits(crc,8))
-        return bits            
+    frame = np.full((FRAME_HEIGHT, FRAME_WIDTH), 255, dtype=np.uint8)
+    top = (FRAME_HEIGHT - qr_img.shape[0]) // 2
+    left = (FRAME_WIDTH - qr_img.shape[1]) // 2
+    frame[top:top + qr_img.shape[0], left:left + qr_img.shape[1]] = qr_img
+    return frame
 
-    def int_to_bits(self, value, length):
-        """整数转固定长度 bit 列表 (MSB first)。
 
-        返回长度为 `length` 的 0/1 列表；超出位会被截断。
-        """
-        bits = []
-        for i in range(length):
-            bits.append((value >> (length - 1 - i)) & 1)
-        return bits
+def _make_header(seg_id: int, frame_id: int, frame_count: int,
+                  total_segs: int, payload_length: int, crc: int) -> bytes:
+    return bytes([
+        frame_count,
+        total_segs,
+        (payload_length >> 8) & 0xFF,
+        payload_length & 0xFF,
+    ]) + crc.to_bytes(4, 'big') + bytes([frame_id, seg_id])
 
-    def build_frame(self, frame_id: list,segments: list) -> np.ndarray:
-        """
-        segment 字节列表
-        """
-        frame = self.template.copy()
 
-        header_bits = self.encoder_header(frame_id,len(segments))
-        self.write_bits_to_header_area(frame,header_bits)
+def split_file(data: bytes) -> list[bytes]:
+    """
+    将文件分段，每段返回完整的 Base64 编码数据（可直接送入 make_qr_frame）。
 
-        all_bits = []
-        for seg in segments:
-            all_bits.extend(seg)
-        self.write_bits_to_data_area(frame,all_bits)
+    Returns:
+        list of b64_encoded bytes
+    """
+    max_raw = MAX_RAW_BYTES
+    seg_max_raw = max_raw * 255
 
-        return frame
+    # 分 segment
+    segments = []
+    offset = 0
+    while offset < len(data):
+        seg_data = data[offset:offset + seg_max_raw]
+        segments.append(seg_data)
+        offset += len(seg_data)
+
+    total_segs = len(segments)
+    result = []
+
+    for seg_idx, seg_data in enumerate(segments):
+        frames_in_seg = (len(seg_data) + max_raw - 1) // max_raw
+        for frame_id in range(frames_in_seg):
+            start = frame_id * max_raw
+            payload = seg_data[start:start + max_raw]
+            crc_val = crc32(payload)
+            header = _make_header(
+                seg_id=seg_idx,
+                frame_id=frame_id,
+                frame_count=frames_in_seg,
+                total_segs=total_segs,
+                payload_length=len(payload),
+                crc=crc_val,
+            )
+            # header + payload 整体 Base64 编码
+            b64_data = base64.b64encode(header + payload)
+            result.append(b64_data)
+
+    return result
+
+
+def build_qr_frames(data: bytes) -> list[np.ndarray]:
+    return [make_qr_frame(b64) for b64 in split_file(data)]

@@ -1,71 +1,71 @@
+"""
+locator.py — 标准 QR 码解码器
+
+用 pyzbar 直接解码视频帧中的标准 QR 码，返回原始字节数据。
+"""
 import cv2
 import numpy as np
 from pyzbar.pyzbar import decode, ZBarSymbol
-from common.config import (
-    BLOCK_SIZE, FRAME_WIDTH, FRAME_HEIGHT,
-    GRID_COLS, GRID_ROWS, FINDER_SIZE
-)
+
+
+def decode_qr_frame(img: np.ndarray) -> bytes | None:
+    """
+    解码视频帧中的 QR 码，返回原始字节数据。
+
+    Args:
+        img: BGR 图像（shape: H×W×3, dtype: uint8），
+             或灰度图像（shape: H×W, dtype: uint8）
+
+    Returns:
+        解码后的原始字节数据，失败返回 None
+    """
+    if len(img.shape) == 3:
+        gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
+    else:
+        gray = img
+
+    # 先试原图
+    decoded = decode(gray, symbols=[ZBarSymbol.QRCODE])
+    if decoded:
+        return decoded[0].data
+
+    # 手机拍照时 QR 码相对整图较小，需要多尺度缩放检测
+    h, w = gray.shape
+    for scale in [0.5, 0.25, 0.125]:
+        new_w = int(w * scale)
+        new_h = int(h * scale)
+        if new_w < 200 or new_h < 200:
+            break
+        scaled = cv2.resize(gray, (new_w, new_h))
+        decoded = decode(scaled, symbols=[ZBarSymbol.QRCODE])
+        if decoded:
+            return decoded[0].data
+
+    return None
 
 
 class FrameLocator:
-    def locate_and_rectify(self, raw_img: np.ndarray) -> np.ndarray | None:
+    """
+    兼容旧接口（保留，方便后续扩展）。
+
+    locate_and_rectify 返回解码后的字节列表（每帧一个 bytes）
+    """
+
+    def locate_and_rectify(self, raw_img: np.ndarray) -> list[bytes] | None:
         """
-        输入原始图片，输出矫正后的灰度图（1920×1080），失败返回 None。
+        解码原始图片中的 QR 码。
+
+        Returns:
+            包含所有解码数据的列表，每元素是一帧的 bytes。
+            如果找不到 QR 码返回 None。
         """
-        gray = raw_img
-        if len(gray.shape) == 3:
-            if gray.dtype != np.uint8:
-                gray = gray.astype(np.uint8)
-            if gray.shape[2] == 3:
-                gray = cv2.cvtColor(gray, cv2.COLOR_BGR2GRAY)
-            elif gray.shape[2] == 4:
-                gray = cv2.cvtColor(gray, cv2.COLOR_BGRA2GRAY)
-        elif len(gray.shape) == 2:
-            if gray.dtype != np.uint8:
-                gray = gray.astype(np.uint8)
-        corners = self._detect_corners_multiscale(gray)
-        if corners is None:
+        if len(raw_img.shape) == 3:
+            gray = cv2.cvtColor(raw_img, cv2.COLOR_BGR2GRAY)
+        else:
+            gray = raw_img
+
+        decoded = decode(gray, symbols=[ZBarSymbol.QRCODE])
+        if not decoded:
             return None
-        return self._warp(gray, corners)
 
-    def _detect_corners_multiscale(self, gray) -> list | None:
-        """尝试多个尺度，返回四个角点坐标 [(x,y),...] 或 None"""
-        scales = [0.1, 0.2, 0.3, 0.5, 1.0]
-        for scale in scales:
-            h, w = gray.shape
-            if scale != 1.0:
-                small = cv2.resize(gray, (int(w * scale), int(h * scale)))
-            else:
-                small = gray
-
-            decoded = decode(small, symbols=[ZBarSymbol.QRCODE])
-            if decoded:
-                poly = decoded[0].polygon
-                # pyzbar 返回顺序: 左上→右上→右下→左下
-                # 缩放过则还原到原图尺度
-                if scale != 1.0:
-                    corners = [(int(p.x / scale), int(p.y / scale)) for p in poly]
-                else:
-                    corners = [(int(p.x), int(p.y)) for p in poly]
-                return corners
-        return None
-
-    def _warp(self, gray, corners) -> np.ndarray:
-        """四点到透视变换，返回矫正图"""
-        BS = BLOCK_SIZE
-        FS = FINDER_SIZE
-        GC = GRID_COLS
-        GR = GRID_ROWS
-
-        src = np.float32(corners)
-        # 四个目标角点: Finder Pattern 的中心位置
-        dst = np.float32([
-            [FS / 2 * BS,        FS / 2 * BS],        # 左上
-            [(GC - FS / 2) * BS, FS / 2 * BS],        # 右上
-            [(GC - FS / 2) * BS, (GR - FS / 2) * BS],  # 右下
-            [FS / 2 * BS,        (GR - FS / 2) * BS],  # 左下
-        ])
-
-        M = cv2.getPerspectiveTransform(src, dst)
-        result = cv2.warpPerspective(gray, M, (FRAME_WIDTH, FRAME_HEIGHT))
-        return result
+        return [d.data for d in decoded]

@@ -18,6 +18,7 @@
 # 【验收标准】
 # 运行 test/frame_reader_test.py 全部通过即合格
 
+import os
 import cv2
 import numpy as np
 
@@ -52,8 +53,19 @@ def read_frames(video_path: str):
         5. yield frame
         6. 循环结束后 cap.release()
     """
-    # TODO: 请实现此函数
-    raise NotImplementedError
+    if not os.path.exists(video_path):
+        raise FileNotFoundError(video_path)
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise RuntimeError(f"Cannot open video: {video_path}")
+    try:
+        while True:
+            ret, frame = cap.read()
+            if not ret:
+                break
+            yield frame
+    finally:
+        cap.release()
 
 
 def get_video_info(video_path: str) -> dict:
@@ -85,5 +97,18 @@ def get_video_info(video_path: str) -> dict:
         2. 用 cap.get(cv2.CAP_PROP_FRAME_COUNT) 等获取属性
         3. 别忘了 cap.release()
     """
-    # TODO: 请实现此函数
-    raise NotImplementedError
+    if not os.path.exists(video_path):
+        raise FileNotFoundError(video_path)
+    cap = cv2.VideoCapture(video_path)
+    if not cap.isOpened():
+        raise RuntimeError(f"Cannot open video: {video_path}")
+    try:
+        info = {
+            "frame_count": int(cap.get(cv2.CAP_PROP_FRAME_COUNT)),
+            "fps": cap.get(cv2.CAP_PROP_FPS),
+            "width": int(cap.get(cv2.CAP_PROP_FRAME_WIDTH)),
+            "height": int(cap.get(cv2.CAP_PROP_FRAME_HEIGHT)),
+        }
+        return info
+    finally:
+        cap.release()

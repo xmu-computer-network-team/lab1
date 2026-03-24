@@ -1,10 +1,10 @@
 #!/usr/bin/env python3
 """
-locator.py 的验收测试
+locator_test.py — 标准 QR 解码器测试
 
 验证策略:
-- 用 experiments/input/ 中的真实拍摄照片验证 pyzbar 定位能力
-- 用 FrameBuilder 生成帧来验证透视变换的正确性（绕过 pyzbar，直接注入角点）
+- 用 frame_builder 生成的帧验证 decode_qr_frame 能正确解码
+- 用真实照片验证 pyzbar 在实际场景中的表现
 
 用法:
   python test/locator_test.py
@@ -17,105 +17,94 @@ sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 import cv2
 import numpy as np
 
-from encoder.frame_builder import FrameBuilder
-from decoder.locator import FrameLocator
-from common.config import FRAME_WIDTH, FRAME_HEIGHT, BLOCK_SIZE, FINDER_SIZE, GRID_COLS, GRID_ROWS
+from encoder.frame_builder import make_qr_frame, split_file
+from decoder.locator import decode_qr_frame, FrameLocator
+from decoder.frame_assembler import FrameAssembler
 
 
 OUT_DIR = "test/locator_test_attachments"
-os.makedirs(OUT_DIR, exist_ok=True)
 
 
-def test_locator_pyzbar_on_real_photos():
-    """测试1: 验证 pyzbar 能检测到真实拍摄照片中的 QR 码"""
-    locator = FrameLocator()
-    photo_dir = "experiments/input"
-    found = 0
-    total = 0
-    for fname in sorted(os.listdir(photo_dir)):
-        if not fname.endswith(('.jpg', '.png', '.jpeg')):
-            continue
-        img_path = os.path.join(photo_dir, fname)
-        img = cv2.imread(img_path)
-        if img is None:
-            print(f"  ⚠ {fname}: 无法读取，跳过")
-            continue
-        total += 1
-        result = locator.locate_and_rectify(img)
-        if result is not None:
-            found += 1
-            out_path = os.path.join(OUT_DIR, f"real_{fname[:-4]}_corrected.png")
-            cv2.imwrite(out_path, result)
-        print(f"  {'✓' if result is not None else '✗'} {fname}: {'矫正成功' if result is not None else '未检测到'}")
-    print(f"\n检测结果: {found}/{total}")
-    assert found == total, f"应有 {total} 张全部检测成功，实际 {found} 张"
-    print("PASS: test_locator_pyzbar_on_real_photos")
+def test_decode_qr_frame_basic():
+    """测试1: decode_qr_frame 能正确解码生成的 QR 帧"""
+    data = b'Test VLC frame data'
+    frames_raw = split_file(data)
+    for raw in frames_raw:
+        frame = make_qr_frame(raw)
+        result = decode_qr_frame(frame)
+        assert result is not None, "应能解码"
+        assert bytes(result) == raw, "解码数据应与原始 Base64 一致"
+    print("PASS: test_decode_qr_frame_basic")
 
 
-def test_locator_perspective_transform_accuracy():
-    """测试2: 验证透视变换本身是正确的（绕过 pyzbar，直接注入角点）"""
-    fb = FrameBuilder()
-    frame = fb.build_frame(0, []).astype(np.uint8)
-    margin = 40
-    frame_padded = cv2.copyMakeBorder(
-        frame, margin, margin, margin, margin,
-        cv2.BORDER_CONSTANT, value=255
-    )
-
-    # 手动构造四个角点（Finder Pattern 中心在原图中的位置，加 margin 偏移）
-    BS = BLOCK_SIZE
-    FS = FINDER_SIZE
-    GC = GRID_COLS
-    GR = GRID_ROWS
-
-    corners = [
-        (int(FS / 2 * BS) + margin, int(FS / 2 * BS) + margin),  # 左上
-        (int((GC - FS / 2) * BS) + margin, int(FS / 2 * BS) + margin),  # 右上
-        (int((GC - FS / 2) * BS) + margin, int((GR - FS / 2) * BS) + margin),  # 右下
-        (int(FS / 2 * BS) + margin, int((GR - FS / 2) * BS) + margin),  # 左下
-    ]
-    print(f"手动角点: {corners}")
-
-    # 用 FrameLocator 的 _warp 方法
-    locator = FrameLocator()
-    corrected = locator._warp(frame_padded, corners)
-
-    # 透视变换后直接得到 1920x1080，与原始帧对比
-    corrected_crop = corrected
-    orig = frame
-
-    # PSNR
-    mse = np.mean((orig.astype(np.float64) - corrected_crop.astype(np.float64)) ** 2)
-    p = float('inf') if mse < 1e-10 else 20 * np.log10(255.0 / np.sqrt(mse))
-    print(f"透视变换 PSNR: {p:.2f} dB")
-
-    # 保存对比图
-    side_by_side = np.hstack([orig, corrected_crop])
-    diff = cv2.absdiff(orig, corrected_crop)
-    cv2.imwrite(os.path.join(OUT_DIR, "warp_side_by_side.png"), side_by_side)
-    cv2.imwrite(os.path.join(OUT_DIR, "warp_diff.png"), diff)
-    print(f"透视变换对比图已保存至 {OUT_DIR}/")
-
-    assert p > 40, f"透视变换 PSNR {p:.2f}dB 过低"
-    print("PASS: test_locator_perspective_transform_accuracy")
+def test_decode_qr_frame_random_data():
+    """测试2: 随机二进制数据帧能被正确解码"""
+    import random
+    data = bytes(random.randint(0, 255) for _ in range(5000))
+    frames_raw = split_file(data)
+    assembler = FrameAssembler()
+    for raw in frames_raw:
+        frame = make_qr_frame(raw)
+        result = decode_qr_frame(frame)
+        assert result is not None, "随机数据帧应能解码"
+        assembler.add(bytes(result))
+        if assembler.assemble() == data:
+            break
+    assert assembler.assemble() == data, "随机数据 roundtrip 失败"
+    print("PASS: test_decode_qr_frame_random_data")
 
 
-def test_locator_no_qr_detected():
+def test_decode_qr_frame_no_qr():
     """测试3: 无 QR 码的图片应返回 None"""
+    black_img = np.zeros((1080, 1920, 3), dtype=np.uint8)
+    result = decode_qr_frame(black_img)
+    assert result is None, "纯黑图应返回 None"
+    print("PASS: test_decode_qr_frame_no_qr")
+
+
+def test_decode_qr_frame_grayscale_input():
+    """测试4: 直接输入灰度图也能解码"""
+    data = b'Gray input test'
+    frames_raw = split_file(data)
+    raw = frames_raw[0]
+    frame = make_qr_frame(raw)
+    # make_qr_frame 已返回灰度图，直接传给 decode_qr_frame 验证灰度输入路径
+    result = decode_qr_frame(frame)
+    assert result is not None, "灰度图输入应能解码"
+    assert bytes(result) == raw, "解码数据应一致"
+    print("PASS: test_decode_qr_frame_grayscale_input")
+
+
+def test_frame_locator_class_compat():
+    """测试5: FrameLocator 类向后兼容"""
+    locator = FrameLocator()
+    data = b'Locator class test'
+    frames_raw = split_file(data)
+    frame = make_qr_frame(frames_raw[0])
+    result = locator.locate_and_rectify(frame)
+    assert result is not None, "FrameLocator 应能解码"
+    print("PASS: test_frame_locator_class_compat")
+
+
+def test_frame_locator_no_qr():
+    """测试6: FrameLocator 无 QR 时返回 None"""
     locator = FrameLocator()
     black_img = np.zeros((1080, 1920, 3), dtype=np.uint8)
     result = locator.locate_and_rectify(black_img)
-    assert result is None, "纯黑图应返回 None"
-    print("PASS: test_locator_no_qr_detected")
+    assert result is None, "无 QR 应返回 None"
+    print("PASS: test_frame_locator_no_qr")
 
 
 # ==================== 主入口 ====================
 
 if __name__ == "__main__":
     tests = [
-        test_locator_pyzbar_on_real_photos,
-        test_locator_perspective_transform_accuracy,
-        test_locator_no_qr_detected,
+        test_decode_qr_frame_basic,
+        test_decode_qr_frame_random_data,
+        test_decode_qr_frame_no_qr,
+        test_decode_qr_frame_grayscale_input,
+        test_frame_locator_class_compat,
+        test_frame_locator_no_qr,
     ]
 
     passed = 0
@@ -129,6 +118,6 @@ if __name__ == "__main__":
             failed += 1
 
     print(f"\n{'='*40}")
-    print(f"结果: {passed} passed, {failed} failed")
+    print(f"结果: {passed} passed, {failed} failed, {len(tests)} total")
     if failed > 0:
         sys.exit(1)

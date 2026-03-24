@@ -1,151 +1,166 @@
-# test/frame_builder_test.py
-#
-# encoder/frame_builder.py 的验收测试
-# 使用方法: 在 lab1/ 目录下运行
-#   python test/frame_builder_test.py
-#
-# 可视化输出会保存到 test/frame_builder_test_attachments/
+#!/usr/bin/env python3
+"""
+frame_builder_test.py — 标准 QR 帧生成器测试
 
+用法:
+  python test/frame_builder_test.py
+"""
 import sys
 import os
-import numpy as np
 
 sys.path.insert(0, os.path.join(os.path.dirname(__file__), ".."))
 
-from encoder.frame_builder import FrameBuilder
-from common.config import FRAME_HEIGHT, FRAME_WIDTH, GRID_ROWS, GRID_COLS, FINDER_SIZE, SEPARATOR_WIDTH
+import numpy as np
+import cv2
+from encoder.frame_builder import (
+    make_qr_frame, split_file, build_qr_frames,
+    MAX_RAW_BYTES, HEADER_SIZE, QR_VERSION, QR_BOX_SIZE
+)
+from decoder.frame_assembler import FrameAssembler, parse_frame
+from pyzbar.pyzbar import decode, ZBarSymbol
+import hashlib
 
-import matplotlib.pyplot as plt
 
 OUT_DIR = "test/frame_builder_test_attachments"
 
 
-def _make_segments(total_bits: int) -> list:
-    """辅助函数: 生成指定总比特数的 segment 列表（每 segment 8bit，模拟一字节）"""
-    segments = []
-    for i in range(total_bits // 8):
-        byte_val = i & 0xFF
-        bits = [(byte_val >> (7 - b)) & 1 for b in range(8)]
-        segments.append(bits)
-    return segments
+def test_make_qr_frame_returns_correct_shape():
+    """测试1: make_qr_frame 返回 (1080, 1920) 灰度图"""
+    b64_dummy = b'A=='  # 最小有效 Base64
+    frame = make_qr_frame(b64_dummy)
+    assert isinstance(frame, np.ndarray), f"应返回 np.ndarray, 实际 {type(frame)}"
+    assert frame.shape == (1080, 1920), f"尺寸应为 (1080, 1920), 实际 {frame.shape}"
+    assert frame.dtype == np.uint8, f"dtype 应为 uint8, 实际 {frame.dtype}"
+    print("PASS: test_make_qr_frame_returns_correct_shape")
 
 
-def _data_capacity() -> int:
-    """每帧数据区最大比特容量"""
-    data_row_start = FINDER_SIZE + SEPARATOR_WIDTH
-    data_row_end = GRID_ROWS - FINDER_SIZE - SEPARATOR_WIDTH
-    return (data_row_end - data_row_start) * GRID_COLS
+def test_make_qr_frame_white_border():
+    """测试2: QR 帧四周应为白色（白边）"""
+    b64_dummy = b'A=='
+    frame = make_qr_frame(b64_dummy)
+    # 边角应为 255（白色）
+    assert frame[0, 0] == 255, "左上角应为白色"
+    assert frame[0, 1919] == 255, "右上角应为白色"
+    assert frame[1079, 0] == 255, "左下角应为白色"
+    assert frame[1079, 1919] == 255, "右下角应为白色"
+    print("PASS: test_make_qr_frame_white_border")
 
 
-# ==================== 测试函数 ====================
-
-def test_build_frame_returns_ndarray():
-    """测试1: build_frame 应返回 numpy.ndarray"""
-    fb = FrameBuilder()
-    segments = _make_segments(64)
-    frame = fb.build_frame(0, segments)
-    assert isinstance(frame, np.ndarray), \
-        f"返回类型应为 np.ndarray, 实际为 {type(frame).__name__}"
-    print("PASS: test_build_frame_returns_ndarray")
+def test_split_file_single_frame():
+    """测试3: 小文件（< MAX_RAW_BYTES）应生成单帧"""
+    data = b'Hello VLC!' * 50  # ~600 bytes
+    frames = split_file(data)
+    assert len(frames) == 1, f"小文件应生成1帧，实际{len(frames)}帧"
+    print("PASS: test_split_file_single_frame")
 
 
-def test_build_frame_shape():
-    """测试2: 返回帧的尺寸应为 (FRAME_HEIGHT, FRAME_WIDTH)"""
-    fb = FrameBuilder()
-    segments = _make_segments(64)
-    frame = fb.build_frame(0, segments)
-    assert frame.shape == (FRAME_HEIGHT, FRAME_WIDTH), \
-        f"帧尺寸期望 ({FRAME_HEIGHT}, {FRAME_WIDTH}), 实际 {frame.shape}"
-    print("PASS: test_build_frame_shape")
+def test_split_file_large():
+    """测试4: 大文件应生成多帧"""
+    data = b'X' * (MAX_RAW_BYTES * 2 + 100)
+    frames = split_file(data)
+    assert len(frames) == 3, f"大文件应生成3帧，实际{len(frames)}帧"
+    print("PASS: test_split_file_large")
 
 
-def test_build_frame_pixel_values_binary():
-    """测试3: 所有像素值应为 0 或 255 (纯黑白帧)"""
-    fb = FrameBuilder()
-    segments = _make_segments(128)
-    frame = fb.build_frame(1, segments)
-    unique_vals = set(np.unique(frame).tolist())
-    assert unique_vals <= {0, 255}, \
-        f"像素值应只含 0 和 255, 实际出现了 {unique_vals - {0, 255}}"
-    print("PASS: test_build_frame_pixel_values_binary")
+def test_split_file_random_binary():
+    """测试5: 随机二进制数据分段正确"""
+    import random
+    data = bytes(random.randint(0, 255) for _ in range(10000))
+    frames = split_file(data)
+    assert len(frames) > 1, "随机数据应生成多帧"
+    # 验证每帧 Base64 编码长度一致（除了最后一帧）
+    lens = [len(f) for f in frames]
+    assert lens[-1] <= lens[0], "最后一帧应<=其他帧"
+    print(f"PASS: test_split_file_random_binary ({len(frames)} frames)")
 
 
-def test_build_frame_does_not_modify_template():
-    """测试4: build_frame 不应修改内部模板 (template 应保持不变)"""
-    fb = FrameBuilder()
-    template_before = fb.template.copy()
-    segments = _make_segments(256)
-    fb.build_frame(3, segments)
-    assert np.array_equal(fb.template, template_before), \
-        "build_frame 不应修改 fb.template"
-    print("PASS: test_build_frame_does_not_modify_template")
+def test_frame_decodes_with_pyzbar():
+    """测试6: 生成的帧能被 pyzbar 正确解码"""
+    data = b'Test VLC ' * 100
+    frames_raw = split_file(data)
+    for raw in frames_raw:
+        frame = make_qr_frame(raw)
+        result = decode(frame, symbols=[ZBarSymbol.QRCODE])
+        assert result, "pyzbar 应能解码帧"
+        assert bytes(result[0].data) == raw, "解码数据应与原始 Base64 完全一致"
+    print("PASS: test_frame_decodes_with_pyzbar")
 
 
-def test_build_frame_different_ids_differ():
-    """测试5: 不同 frame_id 应在 header 区生成不同的帧"""
-    fb = FrameBuilder()
-    segments = _make_segments(128)
-    frame0 = fb.build_frame(0, segments)
-    frame1 = fb.build_frame(1, segments)
-    assert not np.array_equal(frame0, frame1), \
-        "frame_id 不同时，生成的帧应有差异（header 区应不同）"
-    print("PASS: test_build_frame_different_ids_differ")
+def test_end_to_end_small_file():
+    """测试7: 小文件端到端 roundtrip（MD5 比对）"""
+    data = b'Test VLC ' * 100
+    frames_raw = split_file(data)
+    decoded_raw = [bytes(decode(make_qr_frame(f), symbols=[ZBarSymbol.QRCODE])[0].data)
+                   for f in frames_raw]
 
-
-def test_build_frame_overflow_bits_safe():
-    """测试6: 当 segments 的总 bit 数超过数据区容量时，不应抛出异常"""
-    fb = FrameBuilder()
-    capacity = _data_capacity()
-    # 提供 2 倍容量的 bits
-    segments = _make_segments((capacity // 8 + 1) * 8 * 2)
-    try:
-        fb.build_frame(0, segments)
-    except Exception as e:
-        assert False, f"超出容量时不应抛异常, 实际抛出: {e}"
-    print("PASS: test_build_frame_overflow_bits_safe")
-
-
-def test_build_4_frames_visual():
-    """测试7 (可视化): 生成 4 帧并保存为 PNG，直观验证帧结构"""
-    os.makedirs(OUT_DIR, exist_ok=True)
-    fb = FrameBuilder()
-
-    # 准备数据: 用递增字节填充，每帧用不同的 segments 以便区分
-    capacity_bits = _data_capacity()
-    # 每帧填一整页数据（按容量）
-    base_segments = _make_segments(capacity_bits)
-
-    frame_count = 0
-    MAX_FRAMES = 4
-
-    for frame_id in range(MAX_FRAMES):
-        if frame_count >= MAX_FRAMES:
+    assembler = FrameAssembler()
+    for raw in decoded_raw:
+        if assembler.add(raw):
             break
+    result = assembler.assemble()
+    assert result == data, f"roundtrip 失败: {len(result)} != {len(data)}"
+    print("PASS: test_end_to_end_small_file")
 
-        # 用不同偏移让每帧数据不同
-        shifted = base_segments[frame_id:] + base_segments[:frame_id]
-        frame = fb.build_frame(frame_id, shifted)
 
-        out_path = os.path.join(OUT_DIR, f"frame_{frame_id:02d}.png")
-        plt.imsave(out_path, frame, cmap="gray", vmin=0, vmax=255)
-        frame_count += 1
+def test_end_to_end_large_random():
+    """测试8: 大随机文件端到端 roundtrip"""
+    import random
+    data = bytes(random.randint(0, 255) for _ in range(50000))
+    frames_raw = split_file(data)
+    decoded_raw = [bytes(decode(make_qr_frame(f), symbols=[ZBarSymbol.QRCODE])[0].data)
+                   for f in frames_raw]
 
-    assert frame_count == MAX_FRAMES, \
-        f"期望生成 {MAX_FRAMES} 帧, 实际生成 {frame_count} 帧"
-    print(f"PASS: test_build_4_frames_visual — 已保存 {MAX_FRAMES} 帧至 {OUT_DIR}/")
+    assembler = FrameAssembler()
+    for raw in decoded_raw:
+        if assembler.add(raw):
+            break
+    result = assembler.assemble()
+    assert result == data, "大文件 roundtrip 失败"
+    print(f"PASS: test_end_to_end_large_random ({len(frames_raw)} frames, {len(data)} bytes)")
+
+
+def test_parse_frame_header():
+    """测试9: parse_frame 正确解析帧头"""
+    data = b'A' * 1000
+    frames_raw = split_file(data)
+    raw = frames_raw[0]
+    info = parse_frame(raw)
+    assert 'seg_id' in info
+    assert 'frame_id' in info
+    assert 'frame_count' in info
+    assert 'total_segs' in info
+    assert 'payload_length' in info
+    assert 'crc' in info
+    assert 'payload' in info
+    assert info['payload_length'] <= MAX_RAW_BYTES
+    print("PASS: test_parse_frame_header")
+
+
+def test_visual_save():
+    """测试10: 保存可视化 QR 帧"""
+    os.makedirs(OUT_DIR, exist_ok=True)
+    data = b'VLC Test Frame ' * 50
+    frames = build_qr_frames(data)
+    for i, frame in enumerate(frames[:3]):
+        out = os.path.join(OUT_DIR, f"qr_frame_{i:02d}.png")
+        cv2.imwrite(out, frame)
+    print(f"PASS: test_visual_save — {min(3, len(frames))} frames saved to {OUT_DIR}/")
 
 
 # ==================== 主入口 ====================
 
 if __name__ == "__main__":
     tests = [
-        test_build_frame_returns_ndarray,
-        test_build_frame_shape,
-        test_build_frame_pixel_values_binary,
-        test_build_frame_does_not_modify_template,
-        test_build_frame_different_ids_differ,
-        test_build_frame_overflow_bits_safe,
-        test_build_4_frames_visual,
+        test_make_qr_frame_returns_correct_shape,
+        test_make_qr_frame_white_border,
+        test_split_file_single_frame,
+        test_split_file_large,
+        test_split_file_random_binary,
+        test_frame_decodes_with_pyzbar,
+        test_end_to_end_small_file,
+        test_end_to_end_large_random,
+        test_parse_frame_header,
+        test_visual_save,
     ]
 
     passed = 0
