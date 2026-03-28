@@ -28,3 +28,44 @@ test/ ：放测试代码
 ```python
 python -m pip install -r requirements.txt
 ```
+
+## 评测接口规范
+
+### 编码器
+
+命令:
+
+```bash
+./encode in.bin out.mp4 1000
+```
+
+参数:
+
+- argv[1]: 输入二进制文件（默认限制 <= 10MB）
+- argv[2]: 输出视频文件名
+- argv[3]: 视频最大时长（毫秒）
+
+约束:
+
+- 生成视频总时长必须 <= argv[3]
+- 编码过程只生成文件，不在终端播放视频
+
+### 解码器
+
+命令:
+
+```bash
+./decode recorded.mp4 out.bin out.val
+```
+
+参数:
+
+- argv[1]: 输入视频文件
+- argv[2]: 解码输出二进制文件
+- argv[3]: 位正确性标记文件（.val，二进制）
+
+### .val 格式
+
+- 二进制位打包格式，标记 out.bin 每个位是否正确
+- 1 表示正确，0 表示错误
+- 当前实现中，CRC 通过且完整恢复时，对应位全部置 1（即字节为 0xFF）
