@@ -16,32 +16,50 @@ from decoder.locator import decode_qr_frame
 from decoder.frame_assembler import FrameAssembler
 
 
-def _build_all_valid_val(data_len: int) -> bytes:
-    # 位打包格式下，每个 out.bin 字节对应一个 val 字节，按位全 1 表示都正确。
-    return b"\xFF" * data_len
+def decode_video(video_path: str) -> tuple[bytes, bytes]:
+    """从视频中解码出完整的数据流及其有效性掩码。
 
+    返回:
+        (data, val_mask)
 
-def decode_video(video_path: str) -> bytes:
+    约定:
+        - data: 按发送顺序拼接的所有帧 payload；对于完全缺失或 CRC 失败的
+          帧，用 0x00 填充与预期长度相同的占位字节。
+        - val_mask: 与 data 等长的字节流，逐比特标记有效位：0xFF 表示该
+          字节的 8 bit 都来自通过 CRC 的真实数据；0x00 表示该字节对应
+          “弃权位”，不参与错误统计。
+    """
+
     assembler = FrameAssembler()
     frame_count = 0
-    found = 0
+    qr_detected = 0  # pyzbar 成功返回 QR 原始数据的帧数
 
     for raw_frame in read_frames(video_path):
         frame_count += 1
         result = decode_qr_frame(raw_frame)
         if result:
-            found += 1
+            qr_detected += 1
             if assembler.add(result):
-                print(f"File complete after {found} QR frames")
+                # 全部 segment 和 frame 都已齐全
+                print(f"File complete after {qr_detected} QR frames (total video frames: {frame_count})")
                 break
 
-    data = assembler.assemble()
-    if data is None:
-        raise RuntimeError(f"No complete file found ({found}/{frame_count} frames detected)")
-    return data
+    print(
+        f"Decode stats: total_frames={frame_count}, "
+        f"qr_detected={qr_detected}, qr_accepted={assembler._accepted_frames}"
+    )
+
+    assembled = assembler.assemble_with_mask()
+    if assembled is None:
+        raise RuntimeError(
+            f"No usable data assembled (qr_detected={qr_detected}, total_frames={frame_count})"
+        )
+
+    data, val_mask = assembled
+    return data, val_mask
 
 
-def decode_image(image_path: str) -> bytes:
+def decode_image(image_path: str) -> tuple[bytes, bytes]:
     img = cv2.imread(image_path)
     if img is None:
         raise RuntimeError(f"Cannot read image: {image_path}")
@@ -52,22 +70,17 @@ def decode_image(image_path: str) -> bytes:
 
     assembler = FrameAssembler()
     complete = assembler.add(result)
-    if complete:
-        data = assembler.assemble()
-        if data is None:
-            raise RuntimeError("Frame parsed but assembly failed")
-    else:
-        # 查看当前收集进度
-        total_segs = assembler._total_segs or 1
-        seg_id = 0
-        seg_frames = assembler._segments.get(seg_id, {})
-        frame_count = assembler._seg_meta.get(seg_id, 0)
-        raise RuntimeError(
-            "Frame parsed but file incomplete: "
-            f"seg={seg_id}, frames={len(seg_frames)}/{frame_count}, total_segs={total_segs}"
-        )
+    if not complete:
+        # 单帧模式下，理论上只有 1 个 segment、若干帧，这里仍然通过
+        # assemble_with_mask 组装，可兼容将来多帧图片场景。
+        print("Warning: frame parsed but file incomplete in image mode")
 
-    return data
+    assembled = assembler.assemble_with_mask()
+    if assembled is None:
+        raise RuntimeError("Frame parsed but assembly failed")
+
+    data, val_mask = assembled
+    return data, val_mask
 
 
 if __name__ == "__main__":
@@ -82,11 +95,10 @@ if __name__ == "__main__":
     try:
         ext = os.path.splitext(path)[1].lower()
         if ext in ['.jpg', '.jpeg', '.png', '.bmp', '.tiff']:
-            data = decode_image(path)
+            data, val = decode_image(path)
         else:
-            data = decode_video(path)
+            data, val = decode_video(path)
 
-        val = _build_all_valid_val(len(data))
         open(out_bin, 'wb').write(data)
         open(out_val, 'wb').write(val)
         print(f"Written {len(data)} bytes to {out_bin}")
