@@ -20,7 +20,7 @@ import base64
 import numpy as np
 from common.crc import crc32
 from common.config import FRAME_WIDTH, FRAME_HEIGHT, MAX_RAW_BYTES, QR_VERSION, QR_BOX_SIZE, QR_BORDER
-from encoder.file_splitter import split_file
+from encoder.file_splitter import split_file, iter_b64_frames
 
 ERROR_CORRECTION = qrcode.constants.ERROR_CORRECT_L
 
@@ -53,4 +53,18 @@ def make_qr_frame(b64_encoded: bytes) -> np.ndarray:
     return frame
 
 def build_qr_frames(data: bytes) -> list[np.ndarray]:
-    return [make_qr_frame(b64) for b64 in split_file(data)]
+    return list(iter_qr_frames(data))
+
+
+def iter_qr_frames(data: bytes, max_frames: int | None = None):
+    """流式产出 QR 帧（灰度图）。
+
+    Args:
+        data: 原始文件字节
+        max_frames: 最多产出多少帧；None 表示不限制
+
+    Yields:
+        np.ndarray: shape=(FRAME_HEIGHT, FRAME_WIDTH), dtype=uint8
+    """
+    for b64 in iter_b64_frames(data, max_frames=max_frames):
+        yield make_qr_frame(b64)

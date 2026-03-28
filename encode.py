@@ -11,7 +11,7 @@ import os
 sys.path.insert(0, os.path.dirname(__file__))
 
 import numpy as np
-from encoder.frame_builder import build_qr_frames
+from encoder.frame_builder import iter_qr_frames
 from encoder.video_writer import VideoWriterContext
 from common.config import (
     FPS,
@@ -19,6 +19,7 @@ from common.config import (
     FRAME_HEIGHT,
     LEADER_DURATION_SECONDS,
     MAX_INPUT_BYTES,
+    MAX_RAW_BYTES,
 )
 
 
@@ -26,21 +27,33 @@ def _duration_ms_from_frames(frame_count: int) -> float:
     return frame_count * 1000.0 / FPS
 
 
+def _max_data_frames_from_budget_ms(max_duration_ms: int) -> int:
+    # 只约束“有效数据帧”的时长：leader 不计入。
+    # floor(max_duration_ms * FPS / 1000)
+    return (max_duration_ms * FPS) // 1000
+
+
 def encode_file(input_path: str, output_path: str, max_duration_ms: int) -> None:
     data = open(input_path, 'rb').read()
     print(f"Encoding {len(data)} bytes ({len(data) / 1024:.1f} KB)")
 
-    frames = build_qr_frames(data)
-    print(f"Generated {len(frames)} frames at {FPS} FPS")
+    max_data_frames = _max_data_frames_from_budget_ms(max_duration_ms)
+    if max_data_frames <= 0:
+        raise ValueError(
+            "max_duration_ms too small to carry any data frames (leader is excluded): "
+            f"{max_duration_ms}ms at {FPS} FPS"
+        )
+
+    max_data_bytes = max_data_frames * MAX_RAW_BYTES
+    if len(data) > max_data_bytes:
+        original = len(data)
+        data = data[:max_data_bytes]
+        print(
+            "Truncated input to fit effective duration budget: "
+            f"{original} -> {len(data)} bytes (max_data_frames={max_data_frames})"
+        )
 
     leader_frames = int(LEADER_DURATION_SECONDS * FPS)
-    planned_total_frames = leader_frames + len(frames)
-    planned_duration_ms = _duration_ms_from_frames(planned_total_frames)
-    if planned_duration_ms > max_duration_ms:
-        raise ValueError(
-            "Planned video duration exceeds limit: "
-            f"{planned_duration_ms:.2f}ms > {max_duration_ms}ms"
-        )
 
     with VideoWriterContext(output_path) as vw:
         # 写 2 秒纯白帧，避免播放器 UI 遮挡 QR
@@ -48,21 +61,25 @@ def encode_file(input_path: str, output_path: str, max_duration_ms: int) -> None
         for _ in range(leader_frames):
             vw.write_frame(white)
 
-        for i, frame in enumerate(frames):
+        data_frames_written = 0
+        for frame in iter_qr_frames(data, max_frames=max_data_frames):
             vw.write_frame(frame)
-            if (i + 1) % 100 == 0:
-                print(f"  Written {i + 1}/{len(frames)} frames")
+            data_frames_written += 1
+            if data_frames_written % 100 == 0:
+                print(f"  Written {data_frames_written} data frames")
 
-    actual_duration_ms = _duration_ms_from_frames(vw.frame_count)
-    if actual_duration_ms > max_duration_ms:
-        if os.path.exists(output_path):
-            os.remove(output_path)
+    effective_duration_ms = _duration_ms_from_frames(data_frames_written)
+    total_duration_ms = _duration_ms_from_frames(leader_frames + data_frames_written)
+    if effective_duration_ms > max_duration_ms:
+        # 理论上不会发生（因为 max_data_frames 用 floor 计算），但保底。
         raise RuntimeError(
-            "Generated video exceeds max duration and was removed: "
-            f"{actual_duration_ms:.2f}ms > {max_duration_ms}ms"
+            "Effective data duration exceeds limit: "
+            f"{effective_duration_ms:.2f}ms > {max_duration_ms}ms"
         )
 
-    print(f"Done: {output_path} ({actual_duration_ms:.2f} ms)")
+    print(
+        f"Done: {output_path} (effective={effective_duration_ms:.2f} ms, total={total_duration_ms:.2f} ms)"
+    )
 
 
 def _parse_positive_int(raw: str, name: str) -> int:
