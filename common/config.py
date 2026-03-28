@@ -17,10 +17,10 @@ GRID_COLS = FRAME_WIDTH // BLOCK_SIZE #总共1920像素除8个像素一快
 GRID_ROWS = FRAME_HEIGHT // BLOCK_SIZE
 
 #二维码
-QR_VERSION = 30
-QR_BOX_SIZE = 10
+QR_VERSION = 26
+QR_BOX_SIZE = 10  # 略微缩小 QR，增加四周留白
 QR_BORDER = 1
 
-# 最大原始数据字节数（V37 L级 + 整个帧 Base64 编码，实测）
-MAX_RAW_BYTES = 1568
+# 最大原始数据字节数（V26 L级 + Base64 实测）
+MAX_RAW_BYTES = 1013
 HEADER_SIZE = 10
