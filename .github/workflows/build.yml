@@ -46,17 +46,24 @@ jobs:
         run: |
           pyinstaller --onedir `
             --name decode `
-            --hidden-import=pyzbar `
-            --hidden-import=pyzbar.pyzbar `
-            --hidden-import=pyzbar.symbols `
             --hidden-import=decoder.frame_reader `
             --hidden-import=decoder.locator `
             --hidden-import=decoder.frame_assembler `
             --hidden-import=common.config `
             --hidden-import=common.crc `
-            --collect-all pyzbar `
             --distpath dist `
             decode.py
+
+      - name: Copy pyzbar module to decode _internal
+        run: |
+          $pyzbarPath = python -c "import pyzbar; import os; print(os.path.dirname(pyzbar.__file__))"
+          Write-Host "pyzbar location: $pyzbarPath"
+          Copy-Item -Recurse $pyzbarPath dist/decode/_internal/pyzbar
+          # 复制 DLL 文件
+          $dllFiles = Get-ChildItem -Path $pyzbarPath -Filter "*.dll" -Recurse
+          foreach ($dll in $dllFiles) {
+            Copy-Item $dll.FullName dist/decode/_internal/
+          }
 
       - name: Prepare bin directory
         run: |
