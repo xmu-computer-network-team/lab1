@@ -60,11 +60,13 @@ jobs:
 
       - name: Prepare bin directory
         run: |
-          mkdir -p bin
+          mkdir -p bin/encode bin/decode
           # encode.exe 及其依赖
-          cp -r dist/encode/* bin/
+          cp dist/encode/encode.exe bin/encode/
+          cp -r dist/encode/_internal bin/encode/
           # decode.exe 及其依赖（包含 pyzbar DLL）
-          cp -r dist/decode/* bin/
+          cp dist/decode/decode.exe bin/decode/
+          cp -r dist/decode/_internal bin/decode/
 
       - name: Create bin.zip
         run: |
