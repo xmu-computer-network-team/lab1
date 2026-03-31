@@ -45,13 +45,16 @@ jobs:
       - name: Build decode.exe
         run: |
           pyinstaller --onefile `
-            --collect-all pyzbar `
             --name decode `
+            --hidden-import=pyzbar `
+            --hidden-import=pyzbar.pyzbar `
+            --hidden-import=pyzbar.symbols `
             --hidden-import=decoder.frame_reader `
             --hidden-import=decoder.locator `
             --hidden-import=decoder.frame_assembler `
             --hidden-import=common.config `
             --hidden-import=common.crc `
+            --collect-all pyzbar `
             --distpath dist `
             decode.py
 
