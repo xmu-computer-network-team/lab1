@@ -1,0 +1,81 @@
+name: Build Windows Executables
+
+on:
+  push:
+    branches: [main, master]
+    paths:
+      - '**/*.py'
+      - 'requirements.txt'
+      - '.github/workflows/build.yml'
+  pull_request:
+    branches: [main, master]
+  workflow_dispatch:  # 允许手动触发
+
+jobs:
+  build-windows:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Python 3.12
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install pyinstaller
+          pip install -r requirements.txt
+
+      - name: Build encode.exe
+        run: |
+          pyinstaller --onefile `
+            --name encode `
+            --hidden-import=encoder.file_splitter `
+            --hidden-import=encoder.frame_builder `
+            --hidden-import=encoder.video_writer `
+            --hidden-import=common.config `
+            --hidden-import=common.crc `
+            --distpath dist `
+            encode.py
+
+      - name: Build decode.exe
+        run: |
+          pyinstaller --onefile `
+            --collect-all pyzbar `
+            --name decode `
+            --hidden-import=decoder.frame_reader `
+            --hidden-import=decoder.locator `
+            --hidden-import=decoder.frame_assembler `
+            --hidden-import=common.config `
+            --hidden-import=common.crc `
+            --distpath dist `
+            decode.py
+
+      - name: Prepare bin directory
+        run: |
+          mkdir -p bin
+          cp dist/encode.exe bin/
+          cp dist/decode.exe bin/
+          # pyzbar DLL 会被 --collect-all 打包进 decode.exe 内部
+
+      - name: Create bin.zip
+        run: |
+          Compress-Archive -Path bin/* -DestinationPath bin.zip
+
+      - name: Upload bin.zip artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: bin-zip
+          path: bin.zip
+          retention-days: 30
+
+      - name: Upload individual executables
+        uses: actions/upload-artifact@v4
+        with:
+          name: executables
+          path: dist/
+          retention-days: 30

@@ -8,7 +8,13 @@ encode.py — 文件 → QR 视频编码器
 import sys
 import os
 
-sys.path.insert(0, os.path.dirname(__file__))
+# PyInstaller 打包后需要从临时目录加载模块
+if getattr(sys, 'frozen', False):
+    # 打包后的 exe
+    sys.path.insert(0, sys._MEIPASS)
+else:
+    # 直接运行
+    sys.path.insert(0, os.path.dirname(__file__))
 
 import numpy as np
 from encoder.frame_builder import iter_qr_frames

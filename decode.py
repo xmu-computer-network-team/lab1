@@ -8,7 +8,13 @@ decode.py — QR 视频 → 文件解码器
 import sys
 import os
 
-sys.path.insert(0, os.path.dirname(__file__))
+# PyInstaller 打包后需要从临时目录加载模块
+if getattr(sys, 'frozen', False):
+    # 打包后的 exe
+    sys.path.insert(0, sys._MEIPASS)
+else:
+    # 直接运行
+    sys.path.insert(0, os.path.dirname(__file__))
 
 import cv2
 from decoder.frame_reader import read_frames
