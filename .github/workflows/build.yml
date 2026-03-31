@@ -54,15 +54,30 @@ jobs:
             --distpath dist `
             decode.py
 
-      - name: Copy pyzbar module to decode _internal
+      - name: Copy pyzbar module and DLLs to decode _internal
         run: |
           $pyzbarPath = python -c "import pyzbar; import os; print(os.path.dirname(pyzbar.__file__))"
           Write-Host "pyzbar location: $pyzbarPath"
+          
+          # 复制整个 pyzbar 目录
           Copy-Item -Recurse $pyzbarPath dist/decode/_internal/pyzbar
-          # 复制 DLL 文件
-          $dllFiles = Get-ChildItem -Path $pyzbarPath -Filter "*.dll" -Recurse
-          foreach ($dll in $dllFiles) {
-            Copy-Item $dll.FullName dist/decode/_internal/
+          
+          # 复制 libzbar DLL 到 _internal 根目录（pyzbar 会在这里查找）
+          $dllPath = Join-Path $pyzbarPath "libzbar-64.dll"
+          if (Test-Path $dllPath) {
+            Copy-Item $dllPath dist/decode/_internal/
+            Write-Host "Copied libzbar-64.dll"
+          }
+          
+          # 复制 MSVC runtime DLLs（libzbar 依赖）
+          $system32 = "C:\Windows\System32"
+          $msvcDlls = @("msvcp140.dll", "vcruntime140.dll", "vcruntime140_1.dll")
+          foreach ($dll in $msvcDlls) {
+            $src = Join-Path $system32 $dll
+            if (Test-Path $src) {
+              Copy-Item $src dist/decode/_internal/
+              Write-Host "Copied $dll"
+            }
           }
 
       - name: Prepare bin directory
