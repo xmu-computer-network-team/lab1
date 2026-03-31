@@ -32,7 +32,7 @@ jobs:
 
       - name: Build encode.exe
         run: |
-          pyinstaller --onefile `
+          pyinstaller --onedir `
             --name encode `
             --hidden-import=encoder.file_splitter `
             --hidden-import=encoder.frame_builder `
@@ -44,7 +44,7 @@ jobs:
 
       - name: Build decode.exe
         run: |
-          pyinstaller --onefile `
+          pyinstaller --onedir `
             --name decode `
             --hidden-import=pyzbar `
             --hidden-import=pyzbar.pyzbar `
@@ -61,9 +61,10 @@ jobs:
       - name: Prepare bin directory
         run: |
           mkdir -p bin
-          cp dist/encode.exe bin/
-          cp dist/decode.exe bin/
-          # pyzbar DLL 会被 --collect-all 打包进 decode.exe 内部
+          # encode.exe 及其依赖
+          cp -r dist/encode/* bin/
+          # decode.exe 及其依赖（包含 pyzbar DLL）
+          cp -r dist/decode/* bin/
 
       - name: Create bin.zip
         run: |
