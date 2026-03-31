@@ -59,14 +59,17 @@ jobs:
           $pyzbarPath = python -c "import pyzbar; import os; print(os.path.dirname(pyzbar.__file__))"
           Write-Host "pyzbar location: $pyzbarPath"
           
+          # 列出 pyzbar 目录中的所有文件
+          Get-ChildItem -Path $pyzbarPath -Recurse | Write-Host
+          
           # 复制整个 pyzbar 目录
           Copy-Item -Recurse $pyzbarPath dist/decode/_internal/pyzbar
           
-          # 复制 libzbar DLL 到 _internal 根目录（pyzbar 会在这里查找）
-          $dllPath = Join-Path $pyzbarPath "libzbar-64.dll"
-          if (Test-Path $dllPath) {
-            Copy-Item $dllPath dist/decode/_internal/
-            Write-Host "Copied libzbar-64.dll"
+          # 复制所有 DLL 文件到 _internal 根目录
+          $dllFiles = Get-ChildItem -Path $pyzbarPath -Filter "*.dll" -Recurse
+          foreach ($dll in $dllFiles) {
+            Copy-Item $dll.FullName dist/decode/_internal/
+            Write-Host "Copied DLL: $($dll.Name)"
           }
           
           # 复制 MSVC runtime DLLs（libzbar 依赖）
